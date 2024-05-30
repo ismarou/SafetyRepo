@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<robot name="industreal_round_peg_70mm">
+    <link name="industreal_round_peg_70mm">
+        <visual>
+            <geometry>
+                <mesh filename="../mesh/industreal_pegs/1_5_in_Triangle_Hard_4.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <geometry>
+                <mesh filename="../mesh/industreal_pegs/1_5_in_Triangle_Hard_4.obj"/>
+            </geometry>
+            <sdf resolution="256"/>
+        </collision>
+    </link>
+</robot>
