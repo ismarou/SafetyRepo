@@ -225,6 +225,10 @@ class IndustRealEnvPegs(IndustRealBase, FactoryABCEnv):
 
         self.asset_indices = []
 
+        #Added by Joe: To have a self.correct_plug_files with the corresponding URDF for each env
+        self.correct_plug_files = []
+        self.correct_socket_files = []
+
         for i in range(self.num_envs):
             env_ptr = self.gym.create_env(self.sim, lower, upper, num_per_row)
 
@@ -318,6 +322,14 @@ class IndustRealEnvPegs(IndustRealBase, FactoryABCEnv):
             plug_nominal_width = self.asset_info_insertion[subassembly][components[0]]["plug_width"]
             plug_height = self.asset_info_insertion[subassembly][components[0]]["length"]
             socket_height = self.asset_info_insertion[subassembly][components[1]]["height"]
+            
+            #Added by Joe: To have a self.correct_plug_files with the corresponding URDF for each env
+            urdf_root = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "industreal", "urdf")
+            plug_file = ( self.asset_info_insertion[subassembly][components[0]]["urdf_path"] + ".urdf")
+            self.correct_plug_files.append(os.path.join(urdf_root, plug_file))
+            socket_file = ( self.asset_info_insertion[subassembly][components[1]]["urdf_path"] + ".urdf")
+            self.correct_socket_files.append(os.path.join(urdf_root, socket_file))
+            #----------------------------------------------------------------------------------------
 
             if any('rectangular' in sub for sub in components):
                 

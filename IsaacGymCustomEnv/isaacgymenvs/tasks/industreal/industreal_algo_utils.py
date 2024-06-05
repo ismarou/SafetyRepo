@@ -495,10 +495,15 @@ def get_new_obs_noise_curr_step(curr_success, cfg_task, current_obs_noise_curric
     
         Update Observation Noise Curriculum stage at the beginning of the episode, based on success rate.
     """
+    success_thresh = cfg_task.env.obs_noise_curr_success_thresh
+    failure_thresh = cfg_task.rl.curriculum_failure_thresh
+    if cfg_task.env.using_lowinterpen_for_curriculum == True:
+        success_thresh /= cfg_task.env.obs_noise_curr_lowinterpen_divide
+        failure_thresh /= cfg_task.env.obs_noise_curr_lowinterpen_divide
 
-    if curr_success > cfg_task.env.obs_noise_curr_success_thresh:
+    if curr_success > success_thresh:
         current_obs_noise_curricum_stage += 1
-    elif curr_success < cfg_task.rl.curriculum_failure_thresh:
+    elif curr_success < failure_thresh:
         current_obs_noise_curricum_stage -= 1
     
     # Ensure the new stage is within bounds

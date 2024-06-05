@@ -71,6 +71,20 @@ def preprocess_train_config(cfg, config_dict):
 @hydra.main(version_base="1.1", config_name="config", config_path="./cfg")
 def launch_rlg_hydra(cfg: DictConfig):
 
+    import sys
+    import os
+    unwanted_paths = [
+    '/common/home/jhd79/robotics/IsaacGymEnvs']
+    sys.path = [p for p in sys.path if p not in unwanted_paths]
+    desired_path = "/common/home/jhd79/robotics_isi/SafetyRepo/IsaacGymCustomEnv"
+    #current_dir = os.path.dirname(os.path.abspath(__file__))
+    desired_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    if desired_path not in sys.path:
+        sys.path.insert(0, desired_path)
+    for path in sys.path:
+        print(path)
+    #The path in robotics/ is the one that contains the download. Then the path to the files we will use make sure its the given repository instance.
+
     import logging
     import os
     from datetime import datetime
@@ -80,6 +94,11 @@ def launch_rlg_hydra(cfg: DictConfig):
     from isaacgymenvs.pbt.pbt import PbtAlgoObserver, initial_pbt_check
     from isaacgymenvs.utils.rlgames_utils import multi_gpu_get_rank
     from hydra.utils import to_absolute_path
+    
+    # Print each entry in sys.path
+    for path in sys.path:
+        print(path)
+        
     from isaacgymenvs.tasks import isaacgym_task_map
     import gym
     from isaacgymenvs.utils.reformat import omegaconf_to_dict, print_dict
@@ -206,7 +225,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         os.makedirs(experiment_dir, exist_ok=True)
         with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
             f.write(OmegaConf.to_yaml(cfg))
-
+    
     runner.run({
         'train': not cfg.test,
         'play': cfg.test,

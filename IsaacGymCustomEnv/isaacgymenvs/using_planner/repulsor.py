@@ -3,7 +3,7 @@ import numpy as np
 import sys
 sys.path.append('..')
 sys.path.append('../..')
-sys.path.append('/common/home/jhd79/robotics/IsaacGymEnvs/isaacgymenvs/')
+#sys.path.append('/common/home/jhd79/robotics/IsaacGymEnvs/isaacgymenvs/')
 sys.path.append('../../isaacgym/python/isaacgym') #"/common/home/jhd79/robotics/isaacgym/python/isaacgym/torch_utils.py"
 sys.path.append('../../../isaacgym/python/isaacgym')
 
@@ -16,11 +16,11 @@ from utilities import fill_buffer, fix_batch, get_scaled_quaternion, quat_diff_r
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from pytransform3d.trajectories import plot_trajectory
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.animation import FuncAnimation
+#import matplotlib.pyplot as plt #Don't have matplotlib downloadable on my env
+#from mpl_toolkits.mplot3d import Axes3D
+#from pytransform3d.trajectories import plot_trajectory
+#from mpl_toolkits.mplot3d import Axes3D
+#from matplotlib.animation import FuncAnimation
 
 import time
   
@@ -729,7 +729,9 @@ def Potential_Field_actions_Conditional(plug_points, socket_points, noisy_plug_p
   attractive_force = Attractive_Force(noisy_plug_poses, Carrot_trajectory)
   
   ### Repulsive force ###
+  #print("plug_points", plug_points[8])
   repulsive_force = Repulsive_Force(plug_points, socket_points, noisy_plug_poses, repulse_dist, device)
+  #print(repulsive_force[8])
 
   # Scaling:
   if not w:

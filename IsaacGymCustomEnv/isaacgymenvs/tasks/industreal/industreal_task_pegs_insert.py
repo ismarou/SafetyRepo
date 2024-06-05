@@ -49,7 +49,7 @@ import torch
 import warp as wp
 from pysdf import SDF
 import trimesh
-import open3d as o3d
+#import open3d as o3d
 from urdfpy import URDF
 
 import time
@@ -64,7 +64,7 @@ sys.path.append(repulsor_dir)
 from repulsor import *
 sys.path.append('..')
 sys.path.append('../..')
-sys.path.append('/common/home/jhd79/robotics/IsaacGymEnvs/isaacgymenvs/')
+#sys.path.append('/common/home/jhd79/robotics/IsaacGymEnvs/isaacgymenvs/')
 sys.path.append('../../isaacgym/python/isaacgym')
 
 from isaacgym import gymapi, gymtorch, torch_utils
@@ -78,8 +78,8 @@ import random
 
 import isaacgymenvs.tasks.factory.factory_control as fc
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+#import matplotlib.pyplot as plt #Don't have matplotlib downloadable on my env
+#from mpl_toolkits.mplot3d import Axes3D
 
 def visualize_point_clouds_parallel(plug_points, socket_points):
     fig = plt.figure(figsize=(8, 8))
@@ -259,10 +259,11 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
         # Convert the lists of point clouds to tensors
         self.plug_points_template_tensor = torch.zeros((self.num_envs, self.cfg_task.rl.sdf_reward_num_samples, 3), device=self.device)
         self.socket_points_template_tensor = torch.zeros((self.num_envs, self.cfg_task.rl.sdf_reward_num_samples, 3), device=self.device)
+        
+        print("plug files len", len(self.correct_plug_files))#self.plug_files, self.socket_files)
+        for env_idx in range(len(self.correct_plug_files)):#(len(self.plug_files)):
 
-        for env_idx in range(len(self.plug_files)):
-
-            self.plug_trimesh_urdf = URDF.load(self.plug_files[env_idx])
+            self.plug_trimesh_urdf = URDF.load(self.correct_plug_files[env_idx])
             self.plug_trimesh_template = self.plug_trimesh_urdf.links[0].collision_mesh
             self.plug_trimesh_template = self.plug_trimesh_template.apply_scale(self.plug_scale)
 
@@ -283,21 +284,23 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
             
             '''
 
-            self.pointcloud_plug_template = trimesh.sample.sample_surface_even(self.plug_trimesh_template, self.cfg_task.rl.sdf_reward_num_samples, seed = 0)[0]
+            self.pointcloud_plug_template = trimesh.sample.sample_surface_even(self.plug_trimesh_template, self.cfg_task.rl.sdf_reward_num_samples * 2, seed = 0)[0]
+            self.pointcloud_plug_template = self.pointcloud_plug_template[0:self.cfg_task.rl.sdf_reward_num_samples, 0:3]
             self.plug_pc_template = trimesh.points.PointCloud(self.pointcloud_plug_template.copy())
             self.plug_pc_template_list.append(self.plug_pc_template)
             self.plug_points_template_tensor[env_idx, :, :] = torch.tensor(self.pointcloud_plug_template, device=self.device)
 
-            self.socket_trimesh_urdf = URDF.load(self.socket_files[env_idx])
+            self.socket_trimesh_urdf = URDF.load(self.correct_socket_files[env_idx])
             self.socket_trimesh_template = self.socket_trimesh_urdf.links[0].collision_mesh
             self.socket_trimesh_template = self.socket_trimesh_template.apply_scale(self.socket_scale)
-            self.pointcloud_plug_template = trimesh.sample.sample_surface_even(self.socket_trimesh_template, self.cfg_task.rl.sdf_reward_num_samples, seed = 0)[0]
-            self.socket_pc_template = trimesh.points.PointCloud(self.pointcloud_plug_template.copy())
+            self.pointcloud_socket_template = trimesh.sample.sample_surface_even(self.socket_trimesh_template, self.cfg_task.rl.sdf_reward_num_samples * 2, seed = 0)[0]
+            self.pointcloud_socket_template = self.pointcloud_socket_template[0:self.cfg_task.rl.sdf_reward_num_samples, 0:3]
+            #print("self socket point cloud shapeeeeeee", self.pointcloud_socket_template.shape, self.cfg_task.rl.sdf_reward_num_samples)
+            self.socket_pc_template = trimesh.points.PointCloud(self.pointcloud_socket_template.copy())
             self.socket_pc_template_list.append(self.socket_pc_template)
-            self.socket_points_template_tensor[env_idx, :, :] = torch.tensor(self.pointcloud_plug_template, device=self.device)
+            self.socket_points_template_tensor[env_idx, :, :] = torch.tensor(self.pointcloud_socket_template, device=self.device)
 
         #visualize_point_clouds(self.plug_pc_template, self.socket_pc_template)
-
 
         if self.viewer != None:
             self._set_viewer_params()
@@ -402,9 +405,20 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
 
         self.rl_weight = self.cfg_task.env.rl_weight
         
+        self.insertion_log = torch.tensor([-1.0]).to(self.device)
+        self.low_interpen_insertion_log = torch.tensor([-1.0]).to(self.device)
+        self.curriculum_log = torch.tensor([-1.0]).to(self.device)
+        self.reward_log = torch.tensor([-1.0]).to(self.device)
+
         #-------------------------------------------------POTENTIAL FIELD-----------------------------------------------------------------------#
         
         #Noise
+
+        #Noise Joe
+        self.socket_pos_obs_noise = self.cfg_task.env.socket_pos_obs_noise
+        self.socket_rot_obs_noise = self.cfg_task.env.socket_rot_obs_noise
+        self.plug_pos_obs_noise = self.cfg_task.env.plug_pos_obs_noise
+        self.plug_rot_obs_noise = self.cfg_task.env.plug_rot_obs_noise
 
         #self.plug_obs_pos_noise = [0., 0., 0.,] #torch.zeros([self.num_envs, 3], device=self.device)
 
@@ -706,7 +720,7 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
         return rot_actions
 
 
-    def residual_servoing_attractor(self, plug_points, socket_points, trajectory, actions_residual, rl_weight):
+    def residual_servoing_attractor_old(self, plug_points, socket_points, trajectory, actions_residual, rl_weight):
     
         #Input is peg: [envs, points, 3], socket: [envs, points, 3], peg_pose: [envs, 7], trajectory: [points, 3]
 
@@ -746,16 +760,17 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
             if self.DELFT_structured_curriculum_scaling_residual == True:
                 # Structured curriculum for action scale beta
                 #beta = torch.exp(self.progress_buffer[0]/self.cfg_task.rl.max_episode_length)
-                beta = max((self.cfg_task.rl.max_episode_length - self.progress_buf[0])/self.cfg_task.rl.max_episode_length, 0.0)
+                beta = 1.0 - max((self.cfg_task.rl.max_episode_length - self.progress_buf[0])/self.cfg_task.rl.max_episode_length, 0.0)
+                #As time goes on, base beta goes from 1 to 0. Switch it to 0 to 1 by doing 1.0 - beta. From there to get it to go from 1 to 0, do 1.0 - (1.0 - beta) = +1.0 - 1.0 + beta
 
             # w Noise Curriculum + structured curriculum beta
-            if self.structured_curriculum_scaling_residual == True:
+            elif self.structured_curriculum_scaling_residual == True:
                 # Structured curriculum for action scale beta
                 beta = self.beta_interpol[self.obs_noise_curricum_stage]
                 #print("beta", beta)
 
             # w Noise Curriculum + Learned beta
-            if self.simple_self_scaling_residual == True:        
+            elif self.simple_self_scaling_residual == True:        
                 # Map to [0,1]
                 beta = torch.abs(actions_residual[:, 6]).unsqueeze(-1)
                 beta += 1.0
@@ -763,9 +778,11 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
             else:
                 # w/o Noise Curriculum
                 beta = torch.ones((self.num_envs, 1), device=self.device)
-            
+                
             #Apply beta-scaled residual RL actions:
-
+            #print("beta", beta)
+            beta = torch.clip(beta, 0.1, 1.0)
+            #print("before", new_actions)
             new_actions_pos = new_actions[:, 0:3]
             new_actions_rot = new_actions[:, 3:6]
             new_actions_rot_angle = torch.norm(new_actions_rot, p=2, dim=-1)
@@ -783,10 +800,18 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
 
             new_actions_pos = new_actions_pos + beta_actions_residual_pos
             new_actions_quat = torch_utils.quat_mul(new_actions_quat, beta_actions_residual_quat)
+            if self.DELFT_structured_curriculum_scaling_residual == True:
+              #print("1.0-beta", 1.0 - beta)
+              new_actions_pos = (new_actions_pos * (1.0 - beta)) + beta_actions_residual_pos
+              beta_new_actions_rot = new_actions_rot * (1.0 - beta) #Scaling axis angle
+              beta_new_actions_rot_angle = torch.norm(beta_new_actions_rot, p=2, dim=-1) #Angle
+              beta_new_actions_rot_axis = beta_new_actions_rot / beta_new_actions_rot_angle.unsqueeze(-1) #Axis
+              beta_new_actions_quat = torch_jit_utils.quat_from_angle_axis(beta_new_actions_rot_angle, beta_new_actions_rot_axis) #To quaternion
+              new_actions_quat = torch_utils.quat_mul(beta_new_actions_quat, beta_actions_residual_quat)
             new_actions_rot_angle, new_actions_rot_axis = torch_jit_utils.quat_to_angle_axis(new_actions_quat)
             new_actions_rot = new_actions_rot_angle.unsqueeze(-1) * new_actions_rot_axis
             new_actions = torch.cat([new_actions_pos, new_actions_rot], dim=-1)
-
+            #print("after", new_actions)
             # Map to [-1,1] again
             max_val, _ = torch.max(torch.abs(new_actions), dim=1, keepdims=True)
             max_val[max_val==0.0] = 1.0
@@ -800,6 +825,191 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
         self.actions = new_actions.clone().to(self.device)
         self._apply_actions_as_ctrl_targets_noisy(actions=self.actions, ctrl_target_gripper_dof_pos=0.0, do_scale=True)
 
+    def residual_servoing_attractor(self, plug_points, socket_points, trajectory, actions_residual, rl_weight):
+    
+        #Input is peg: [envs, points, 3], socket: [envs, points, 3], peg_pose: [envs, 7], trajectory: [points, 3]
+
+        # Actions of Potential Field
+
+        fixed_w_pos = torch.tensor([self.cfg_task.Potential_Field.repulsive_weight_pos], device=self.device)#.repeat(self.num_envs, 1)
+        fixed_w_rot = torch.tensor([self.cfg_task.Potential_Field.repulsive_weight_rot], device=self.device)#.repeat(self.num_envs, 1)
+        
+        new_actions = Potential_Field_actions_Conditional(
+                                                                self.plug_points, 
+                                                                self.socket_points, 
+                                                                self.noisy_plug_pos, 
+                                                                self.noisy_plug_quat,
+                                                                trajectory, 
+                                                                self.cfg_task.Potential_Field.Carrot_threshold, 
+                                                                self.cfg_task.Potential_Field.repulse_dist_th, 
+                                                                device = self.device,
+                                                                w = self.cfg_task.Potential_Field.learned_weight_Potential_Field, 
+                                                                residual_weight = actions_residual, 
+                                                                fixed_w_pos = fixed_w_pos,
+                                                                fixed_w_rot = fixed_w_rot, 
+                                                                t= self.progress_buf[0], 
+                                                                max_episode_length=self.cfg_task.rl.max_episode_length
+                                                                                                                                            )
+        #print("PF actions:", new_actions[0])
+        
+        # Calculate Weight beta
+            
+        # If + Residual RL:    
+        self.only_PF = True
+        if self.structured_curriculum_scaling_residual:
+            if self.action_residual == True and self.beta_interpol[self.obs_noise_curricum_stage] > 0.0:
+               self.only_PF = False
+        elif self.action_residual:
+            self.only_PF = False
+
+        if not self.only_PF:
+            # Total actions = Potential Field actions + beta * Residual RL actions
+
+            # Cases for beta
+
+            # w Noise Curriculum + DELFT curriculum beta
+            if self.DELFT_structured_curriculum_scaling_residual == True:
+                # Structured curriculum for action scale beta
+                #beta = torch.exp(self.progress_buffer[0]/self.cfg_task.rl.max_episode_length)
+                beta = max((self.cfg_task.rl.max_episode_length - self.progress_buf[0])/self.cfg_task.rl.max_episode_length, 0.0)
+                #print("beta", beta)
+
+            # w Noise Curriculum + structured curriculum beta
+            elif self.structured_curriculum_scaling_residual == True:
+                # Structured curriculum for action scale beta
+                beta = self.beta_interpol[self.obs_noise_curricum_stage]
+
+            # w Noise Curriculum + Learned beta
+            elif self.simple_self_scaling_residual == True:        
+            
+                # Map to [0,1]
+                beta = torch.abs(actions_residual[:, 6]).unsqueeze(-1)
+                beta += 1.0
+                beta *= 0.5
+            
+            else:
+                # w/o Noise Curriculum
+                beta = torch.ones((self.num_envs, 1), device=self.device)
+            
+            #print("beta2: ", beta)
+            #Apply beta-scaled residual RL actions:
+
+            #print("beta", beta)
+
+            #print("Current beta weight: ", self.beta_interpol[self.obs_noise_curricum_stage])
+
+            actions_residual_pos = actions_residual[:, 0:3]
+            actions_residual_rot = actions_residual[:, 3:6]
+            
+            #Trying to do an elementwise multiplication [envs, 3] * [envs, 3]
+            beta_actions_residual_pos = torch.mul(beta.repeat(1, actions_residual_pos.shape[1]), actions_residual_pos)
+            #print("beta", beta.shape)
+            #beta_actions_residual_rot = torch.mul(beta.repeat(1, actions_residual_rot.shape[1]) , actions_residual_rot)
+            #beta_actions_residual_rot_angle = torch.norm(beta_actions_residual_rot, p=2, dim=-1)
+            #beta_actions_residual_rot_axis = beta_actions_residual_rot / beta_actions_residual_rot_angle.unsqueeze(-1)
+            #beta_actions_residual_quat = torch_jit_utils.quat_from_angle_axis(beta_actions_residual_rot_angle, beta_actions_residual_rot_axis)
+            
+            actions_residual_rot_angle = torch.norm(actions_residual_rot, p=2, dim=-1)
+            #print("actions_residual_rot_angle", actions_residual_rot_angle.shape)
+            beta_actions_residual_rot_angle = torch.mul(beta, actions_residual_rot_angle.unsqueeze(-1)).squeeze(-1)
+            #print(beta_actions_residual_rot_angle.shape)
+            actions_residual_rot_axis = actions_residual_rot / actions_residual_rot_angle.unsqueeze(-1)
+            beta_actions_residual_quat = torch_jit_utils.quat_from_angle_axis(beta_actions_residual_rot_angle, actions_residual_rot_axis)
+
+
+            new_actions_pos = new_actions[:, 0:3]
+            new_actions_rot = new_actions[:, 3:6]
+            new_actions_rot_angle = torch.norm(new_actions_rot, p=2, dim=-1)
+            new_actions_rot_axis = new_actions_rot / new_actions_rot_angle.unsqueeze(-1)
+            new_actions_quat = torch_jit_utils.quat_from_angle_axis(new_actions_rot_angle, new_actions_rot_axis)
+            
+            is_last_step = self.progress_buf[0] == self.max_episode_length - 2
+        
+            #if is_last_step:
+                
+            #    print("beta", beta)
+
+            #    print("actions_residual_pos", actions_residual_pos[0])
+            #    print("beta_actions_residual_pos", beta_actions_residual_pos[0])
+                
+            #    print("actions_residual_rot", actions_residual_rot[0])
+            #    print("beta_actions_residual_rot_angle", beta_actions_residual_rot_angle[0])
+            #    print("beta_actions_residual_rot_axis", actions_residual_rot_axis[0])
+            #    print("beta_actions_residual_quat", beta_actions_residual_quat[0])
+                
+            #    print("new_actions_pos", new_actions_pos[0])
+            #    print("new_actions_rot", new_actions_rot[0])
+            #    print("new_actions_rot_angle", new_actions_rot_angle[0])
+            #    print("new_actions_rot_axis", new_actions_rot_axis[0])
+            #    print("new_actions_quat", new_actions_quat[0])
+
+            #print("beta_actions_residual_quat shape", beta_actions_residual_quat.shape)
+            #print("new_actions_quat shape", new_actions_quat.shape)
+
+            new_actions_pos = new_actions_pos + beta_actions_residual_pos
+            new_actions_quat = torch_utils.quat_mul(new_actions_quat, beta_actions_residual_quat)
+
+            if self.DELFT_structured_curriculum_scaling_residual == True:
+              #print("1.0-beta", 1.0 - beta)
+              new_actions_pos = (new_actions_pos * (1.0 - beta)) + beta_actions_residual_pos
+              beta_new_actions_rot = new_actions_rot * (1.0 - beta) #Scaling axis angle
+              beta_new_actions_rot_angle = torch.norm(beta_new_actions_rot, p=2, dim=-1) #Angle
+              beta_new_actions_rot_axis = beta_new_actions_rot / beta_new_actions_rot_angle.unsqueeze(-1) #Axis
+              beta_new_actions_quat = torch_jit_utils.quat_from_angle_axis(beta_new_actions_rot_angle, beta_new_actions_rot_axis) #To quaternion
+              new_actions_quat = torch_utils.quat_mul(beta_new_actions_quat, beta_actions_residual_quat)
+
+            #new_actions_quat = torch_utils.quat_mul(beta_actions_residual_quat, new_actions_quat)
+            
+            #if is_last_step:
+            #    print("NEW new_actions_pos", new_actions_pos[0])
+            #    print("NEW new_actions_quat", new_actions_quat[0])
+            #    print(" ")
+
+            new_actions_rot_angle, new_actions_rot_axis = torch_jit_utils.quat_to_angle_axis(new_actions_quat)
+            new_actions_rot = new_actions_rot_angle.unsqueeze(-1) * new_actions_rot_axis
+            new_actions = torch.cat([new_actions_pos, new_actions_rot], dim=-1)
+
+            # Map to [-1,1] again
+            
+            '''
+            new_actions_pos = new_actions[:, 0:3]
+            max_val, _ = torch.max(new_actions_pos, dim=1, keepdims=True)
+            #max_val[max_val==0.0] = 1.0
+            min_val, _ = torch.min(new_actions_pos, dim=1, keepdims=True)
+            new_actions_pos = (new_actions_pos - min_val) / ((max_val - min_val) + torch.finfo(torch.float32).eps)
+    
+            new_actions_rot = new_actions[:, 3:6]
+            max_val, _ = torch.max(torch.abs(new_actions_rot), dim=1, keepdims=True)
+            #max_val[max_val==0.0] = 1.0
+            min_val, _ = torch.min(torch.abs(new_actions_rot), dim=1, keepdims=True)
+            new_actions_rot = (new_actions_rot - min_val) / ( (max_val - min_val) + torch.finfo(torch.float32).eps)
+            '''
+            
+            '''
+            new_actions_pos = new_actions[:, 0:3]
+            max_val, _ = torch.max(new_actions_pos, dim=1, keepdims=True)
+            max_val[max_val==0.0] = 1.0
+            new_actions_pos = new_actions_pos / max_val 
+    
+            new_actions_rot = new_actions[:, 3:6]
+            max_val, _ = torch.max(torch.abs(new_actions_rot), dim=1, keepdims=True)
+            max_val[max_val==0.0] = 1.0
+            new_actions_rot = new_actions_rot / max_val 
+            '''        
+
+            #max_val, _ = torch.max(new_actions, dim=1, keepdims=True)
+            #max_val[max_val==0.0] = 1.0
+            #new_actions_pos = new_actions / max_val 
+            
+            
+
+            new_actions = torch.cat([new_actions_pos, new_actions_rot], dim=-1)
+            
+        # If you did not satisfy the condition, new_actions = only the actions of the Potential Field, without any residual RL actions
+
+        # Total actions
+        self.actions = new_actions.clone().to(self.device)
+        self._apply_actions_as_ctrl_targets_noisy(actions=self.actions, ctrl_target_gripper_dof_pos=0.0, do_scale=True)
 
     def pre_physics_step(self, actions_RL):
 
@@ -867,6 +1077,7 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
         #print(" ")
 
         self.plug_points = self.apply_transformation(self.plug_points_template_tensor, self.noisy_plug_pos_R, self.noisy_plug_quat_R)
+        #print(self.plug_points_template_tensor[8], self.plug_points.shape, self.plug_points[8])
         self.socket_points = self.apply_transformation(self.socket_points_template_tensor, self.noisy_socket_pos_R, self.noisy_socket_quat_R)
 
         # Call the visualization function with self.plug_points and self.socket_points
@@ -1165,7 +1376,7 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
               print("percentage_plug_inserted_in_socket with low interpenetration:", self.extras["insertion_successes"] * 100.0)
 
           # SBC: Log current max downward displacement of plug at beginning of episode
-          self.extras["curr_max_disp"] = self.curr_max_disp
+          #self.extras["curr_max_disp"] = #self.curr_max_disp
 
           # SBC: Update curriculum difficulty based on success rate
           self.curr_max_disp = algo_utils.get_new_max_disp( curr_success=self.extras["insertion_successes"], cfg_task=self.cfg_task, curr_max_disp=self.curr_max_disp,)
@@ -1180,6 +1391,7 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
           # Calculate the percentage of pegs that were engaged with the socket
           percentage_plug_engaged_w_socket = (is_plug_engaged_w_socket_episode/self.num_envs)*100
           print("percentage_plug_engaged_w_socket:", percentage_plug_engaged_w_socket)
+          self.extras["curr_max_disp"] = percentage_plug_engaged_w_socket
 
           is_plug_halfway_inserted_in_socket_episode = torch.sum(is_plug_halfway_inserted_in_socket).item()
           print("is_plug_halfway_inserted_in_socket_episode:", is_plug_halfway_inserted_in_socket_episode, "out of", self.num_envs)
@@ -1187,6 +1399,21 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
           # Calculate the percentage of pegs that were engaged with the socket
           percentage_is_plug_halfway_inserted_in_socket = (is_plug_halfway_inserted_in_socket_episode/self.num_envs)*100
           print("percentage_is_plug_halfway_inserted_in_socket:", percentage_is_plug_halfway_inserted_in_socket)
+
+          '''
+          Calculate and Save insertion successes
+          '''
+
+          insertion_percentage = torch.mean(is_plug_inserted_in_socket.float()).unsqueeze(0)
+          low_interpen_insertion_percentage = (torch.sum(is_plug_inserted_in_socket[low_interpen_envs].float()) / self.num_envs).unsqueeze(0)
+          print(insertion_percentage.shape, low_interpen_insertion_percentage.shape)
+          self.insertion_log = torch.cat([self.insertion_log, insertion_percentage], dim=0)
+          self.low_interpen_insertion_log = torch.cat([self.low_interpen_insertion_log, low_interpen_insertion_percentage], dim=0)
+          torch.save(self.insertion_log, "runs_for_plots/"+self.cfg_task.env.run_specs+"_insertion.pt")
+          torch.save(self.low_interpen_insertion_log, "runs_for_plots/"+self.cfg_task.env.run_specs+"_low_interpen_insertion.pt")
+          if self.cfg_task.env.noise_shift_with_success_rate == True:
+            self.curriculum_log = torch.cat([self.curriculum_log, self.plug_obs_pos_curriculum_steps[self.obs_noise_curricum_stage, 0].unsqueeze(0)], dim=0)
+            torch.save(self.curriculum_log, "runs_for_plots/"+self.cfg_task.env.run_specs+"_curriculum.pt")
 
           '''
             Calculate and Print the percentage of pegs that were inserted in the socket
@@ -1215,12 +1442,17 @@ class IndustRealTaskPegsInsert(IndustRealEnvPegs, FactoryABCTask):
                 is_plug_inserted_in_socket_low_interpen = is_plug_inserted_in_socket[low_interpen_envs]
               else: #All high interpen so just zeros
                 is_plug_inserted_in_socket_low_interpen = is_plug_inserted_in_socket * 0.0
-              scaling_percent_inserted_nointerpen = torch.sum(is_plug_inserted_in_socket_low_interpen.float()).item() / self.num_envs
-            
+              #scaling_percent_inserted_nointerpen = torch.sum(is_plug_inserted_in_socket_low_interpen.float()).item() / self.num_envs
+            else: #No high interpen envs
+                is_plug_inserted_in_socket_low_interpen = is_plug_inserted_in_socket
+            percent_inserted_nointerpen = torch.sum(is_plug_inserted_in_socket_low_interpen.float()).item() / self.num_envs
+            curr_success = is_plug_inserted_in_socket_episode/self.num_envs
+            if self.cfg_task.env.using_lowinterpen_for_curriculum == True:
+                curr_success = percent_inserted_nointerpen
 
             # Noise Curriculum: Update Obs Noise curriculum difficulty based on success rate
             self.obs_noise_curricum_stage = algo_utils.get_new_obs_noise_curr_step(
-                                                                                        curr_success = is_plug_inserted_in_socket_episode/self.num_envs, 
+                                                                                        curr_success = curr_success, 
                                                                                         cfg_task=self.cfg_task, 
                                                                                         current_obs_noise_curricum_stage = self.obs_noise_curricum_stage, 
                                                                                         max_curriculum_steps = self.num_curriculum_steps_obs

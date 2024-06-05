@@ -20,16 +20,16 @@ env:
     action_residual: False #True #6
 
     residual_scale: 0.25
-    entire_action_residual: False
+    entire_action_residual: True
     potential_field_scale_residual: False #2
     self_scaling_residual: False #8
 
-    structured_curriculum_scaling_residual: False #True
+    structured_curriculum_scaling_residual: False #True #ours
     DELFT_structured_curriculum_scaling_residual: False #True
     rl_weight: False #True
 
     simple_self_scaling_residual: False #True #7
-    noise_shift_with_success_rate: True
+    noise_shift_with_success_rate: True #-------------------------------------------------REMEMBER THIS
     
     step_scale: 0.05
     improve_limit: 0.85
@@ -47,20 +47,23 @@ env:
 
     socket_pos_obs_noise_min: [0.0, 0.0, 0.0] #------------------------------------------Noise
     socket_rot_obs_noise_min: [0.0, 0.0, 0.0] #------------------------------------------Noise
-    socket_pos_obs_noise: [0.0, 0.0, 0.0] #[0.001, 0.001, 0.001] #------------------------------------------Noise
-    socket_rot_obs_noise: [0.0, 0.0, 0.0] #[0.0174533, 0.0174533, 0.0174533] #------------------------------------------Noise
+    socket_pos_obs_noise: [0.001, 0.001, 0.001] #[0.001, 0.001, 0.001] #------------------------------------------Noise
+    socket_rot_obs_noise: [0.0174533, 0.0174533, 0.0174533] #[0.0174533, 0.0174533, 0.0174533] #------------------------------------------Noise
     
     plug_pos_obs_noise_min: [0.0, 0.0, 0.0]  #------------------------------------------Noise
     plug_rot_obs_noise_min: [0.0, 0.0, 0.0]   #------------------------------------------Noise
-    plug_pos_obs_noise: [0.0, 0.0, 0.0] #[0.005, 0.005, 0.005]  #------------------------------------------Noise
-    plug_rot_obs_noise: [0.0, 0.0, 0.0] #[0.0872665, 0.0872665, 0.0872665]  #------------------------------------------Noise
+    plug_pos_obs_noise: [0.001, 0.001, 0.001] #[0.005, 0.005, 0.005]  #------------------------------------------Noise
+    plug_rot_obs_noise: [0.0174533, 0.0174533, 0.0174533] #[0.0872665, 0.0872665, 0.0872665]  #------------------------------------------Noise
 
-    obs_noise_curriculum: True
-    obs_noise_curr_step_size: 0.0005
+    obs_noise_curriculum: True #If false it will use the max noise
+    obs_noise_curr_step_size: 0.0001 #0.0005 #Isidoros's is 0.0001
     obs_noise_curr_success_thresh: 0.75
     obs_noise_curr_failure_thresh: 0.50
+    using_lowinterpen_for_curriculum: False #Joe, for using if we are using the low interpen for the curriculum progression
+    obs_noise_curr_lowinterpen_divide: 1.3
 
     resolution: 10
+    run_specs: ""
     Carrot_trajectory_resolution: 30 #200 #120
     init_rot_random_steps: 50
 
@@ -79,9 +82,9 @@ randomize:
     fingertip_centered_rot_noise: [0.0, 0.0, 0.0]  # noise on fingertip rotation
 
     socket_pos_xy_initial: [0.5, 0.0]  # initial position of socket on table
-    socket_pos_xy_noise: [0.1, 0.1]   # noise on socket position ------------------------------------------Noise
-    socket_pos_z_noise_bounds: [0.0, 0.0]   # noise on socket offset from table ---------------------------Noise
-    socket_rot_noise: [0.0, 0.0, 0.0872665]  # noise on socket rotation ---------------------------Noise
+    socket_pos_xy_noise: [0.0, 0.0] #[0.1, 0.1]  # noise on socket position ------------------------------------------Noise
+    socket_pos_z_noise_bounds: [0.0, 0.0] #[0.0, 0.05]   # noise on socket offset from table ---------------------------Noise
+    socket_rot_noise: [0.0, 0.0, 0.0] #[0.0, 0.0, 0.0872665] # noise on socket rotation ---------------------------Noise
 
     plug_pos_xy_noise: [0.01, 0.01]  # noise on plug position ---------------------------------------------------Noise
     plug_rot_noise: [0.26, 0.26, 0.26]  # Noise on plug rotation ---------------------------Noise
